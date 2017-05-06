@@ -10,7 +10,7 @@ struct LogEntry {
 
 class RequestInterface {
 public:
-  virtual void Initialize(std::vector<std::string> hostList) = 0;
+  virtual void Initialize(std::vector<std::string> hostList, RaftServerImpl * raftServer) = 0;
   virtual void AppendEntries(
     int destId,
     int leaderTerm,
@@ -18,18 +18,14 @@ public:
     int prevLogIndex,
     int prevLogTerm,
     const std::vector<std::string>& entries,
-    int leaderCommit,
-    int * responseTerm,
-    bool * success
+    int leaderCommit
   );
   virtual void RequestVote(
     int destId,
     int candidateTerm,
     int candidateId,
     int lastLogIndex,
-    int lastLogTerm,
-    int * responseTerm,
-    bool * voteGranted
+    int lastLogTerm
   );
 };
 
@@ -38,7 +34,7 @@ public:
   virtual void Initialize(RaftServerImpl* raftServer) = 0;
 };
 
-class MachineInterface {
+class StateMachineInterface {
 public:
   virtual void Process(std::string command) = 0;
 };
@@ -56,4 +52,11 @@ public:
     int votedFor,
     const std::vector<LogEntry>& log
   ) = 0;
+};
+
+class AlarmServiceInterface {
+public:
+  virtual void Initialize(RaftServerImpl* raftServer) = 0;
+  virtual void ResetElectionTimeout(int microseconds) = 0;
+  virtual void ResetLeaderTimeout(int microseconds) = 0;
 };

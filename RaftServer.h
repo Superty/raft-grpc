@@ -3,6 +3,8 @@
 #include "RaftInterface.h"
 #include <memory>
 #include <vector>
+#include <mutex>
+#include <random>
 
 using std::unique_ptr;
 using std::string;
@@ -12,12 +14,14 @@ enum class ServerState { Leader, Candidate, Follower };
 class RaftServerImpl {
 public:
   RaftServerImpl(
+    int id,
     unique_ptr<RequestInterface> o_requestImpl,
     unique_ptr<ResponseInterface> o_responseImpl,
-    unique_ptr<MachineInterface> o_snapshot,
+    unique_ptr<MachineInterface> o_stateMachine,
     unique_ptr<StorageInterface> o_storageImpl,
-    std::vector<std::string> hostList,
-    string logFile
+    unique_ptr<AlarmServiceInteface> o_alarmService,
+    const std::vector<std::string>& hostList,
+    const string& logFile
   );
   void Run();
   void HandleAppendEntries(
@@ -38,18 +42,29 @@ public:
     int * responseTerm,
     bool * voteGranted
   );
-  void BecomeLeader();
-  void BecomeCandidate();
-  void BecomeFollower();
+  void AppendEntriesCallback(int responseTerm, bool success);
+  void RequestVoteCallback(int responseTerm, bool voteGranted);
 
 private:
+  void BecomeFollower();
+  void BecomeCandidate();
+  void BecomeLeader();
+  void SendHeartbeat();
+
+  int myId;
   unique_ptr<RequestInterface> requestImpl;
   unique_ptr<ResponseInterface> responseImpl;
-  unique_ptr<MachineInterface> currentState;
+  unique_ptr<StateMachineInterface> stateMachine;
   unique_ptr<StorageInterface> storageImpl;
+  unique_ptr<AlarmServiceInteface> alarmService;
+
+  std::mutex overallLock;
+  bool mustBecomeCandidate;
+  int hostCount;
+  int votesGained;
 
   // persistent state
-  int32_t currentTerm, votedFor;
+  int currentTerm, votedFor;
   std::vector<LogEntry> log;
 
   // volatile state (common)
@@ -58,4 +73,9 @@ private:
 
   // volatile state (valid if this object is leader)
   std::vector<int> nextIndex, matchIndex;
+
+  const static int minElectionTimeout = 150000, maxElectionTimeout = 300000;
+  std::default_random_engine generator;
+  std::uniform_int_distribution<int> distribution;
+  std::function<int(void)> pickElectionTimeout;
 };
