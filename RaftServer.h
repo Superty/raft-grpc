@@ -17,9 +17,9 @@ public:
     int id,
     unique_ptr<RequestInterface> o_requestImpl,
     unique_ptr<ResponseInterface> o_responseImpl,
-    unique_ptr<MachineInterface> o_stateMachine,
+    unique_ptr<StateMachineInterface> o_stateMachine,
     unique_ptr<StorageInterface> o_storageImpl,
-    unique_ptr<AlarmServiceInteface> o_alarmService,
+    unique_ptr<AlarmServiceInterface> o_alarmService,
     const std::vector<std::string>& hostList,
     const string& logFile
   );
@@ -56,7 +56,7 @@ private:
   unique_ptr<ResponseInterface> responseImpl;
   unique_ptr<StateMachineInterface> stateMachine;
   unique_ptr<StorageInterface> storageImpl;
-  unique_ptr<AlarmServiceInteface> alarmService;
+  unique_ptr<AlarmServiceInterface> alarmService;
 
   std::mutex overallLock;
   bool mustBecomeCandidate;
@@ -77,5 +77,5 @@ private:
   const static int minElectionTimeout = 150000, maxElectionTimeout = 300000;
   std::default_random_engine generator;
   std::uniform_int_distribution<int> distribution;
-  std::function<int(void)> pickElectionTimeout;
+  std::function<int(void)> PickElectionTimeout;
 };

@@ -48,10 +48,10 @@ all: system-check RaftServer
 # raft_client: raft_client.cc raft.pb.o raft.grpc.pb.o
 # 	$(CXX) $(CXXFLAGS) $^ $(LDFLAGS) -o $@
 
-test: test.cpp RaftServer.o
-	$(CXX) $(CXXFLAGS) $^ $(LDFLAGS) -o $@
+# test: test.cpp RaftServer.o
+# 	$(CXX) $(CXXFLAGS) $^ $(LDFLAGS) -o $@
 
-RaftServer: RaftServer.cpp RaftInterface.h raft.pb.o raft.grpc.pb.o
+RaftServer: src/RaftServer.cpp src/RaftInterface.h raft.pb.o raft.grpc.pb.o
 	$(CXX) $(CXXFLAGS) $^ $(LDFLAGS) -o $@
 
 %.grpc.pb.cc: %.proto

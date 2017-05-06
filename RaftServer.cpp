@@ -12,7 +12,7 @@ RaftServerImpl::RaftServerImpl(
   unique_ptr<ResponseInterface> o_responseImpl,
   unique_ptr<StateMachineInterface> o_stateMachine,
   unique_ptr<StorageInterface> o_storageImpl,
-  unique_ptr<AlarmServiceInteface> o_alarmService,
+  unique_ptr<AlarmServiceInterface> o_alarmService,
   const std::vector<string>& hostList,
   const string& logFile
 ):
@@ -38,7 +38,7 @@ serverState(ServerState::Follower)
     minElectionTimeout,
     maxElectionTimeout
   );
-  pickElectionTimeout = std::bind(distribution, generator);
+  PickElectionTimeout = std::bind(distribution, generator);
 
   Run();
 }
@@ -59,7 +59,7 @@ void RaftServerImpl::BecomeCandidate() {
   serverState = ServerState::Candidate;
   currentTerm++;
   votedFor = myId;
-  storageImpl->Update();
+  storageImpl->Update(currentTerm, votedFor, log);
   alarmService->ResetElectionTimeout(PickElectionTimeout());
 
   for(int id = 0; id < hostCount; id++) {
