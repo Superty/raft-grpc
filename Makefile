@@ -31,7 +31,7 @@
 
 CXX = g++
 CPPFLAGS += -I/usr/local/include -pthread
-CXXFLAGS += -std=c++11
+CXXFLAGS += -std=c++11 -fdiagnostics-color=always
 LDFLAGS += -L/usr/local/lib `pkg-config --libs grpc++`            \
            -Wl,--no-as-needed -lgrpc++_reflection -Wl,--as-needed \
            -lprotobuf -lpthread -ldl
@@ -43,13 +43,16 @@ PROTOS_PATH = .
 
 vpath %.proto $(PROTOS_PATH)
 
-all: system-check # raft_server raft_client
+all: system-check RaftServer
 
 # raft_client: raft_client.cc raft.pb.o raft.grpc.pb.o
 # 	$(CXX) $(CXXFLAGS) $^ $(LDFLAGS) -o $@
 
-# raft_server: raft_server.cc raft.pb.o raft.grpc.pb.o
-# 	$(CXX) $(CXXFLAGS) $^ $(LDFLAGS) -o $@
+test: test.cpp RaftServer.o
+	$(CXX) $(CXXFLAGS) $^ $(LDFLAGS) -o $@
+
+RaftServer: RaftServer.cpp RaftInterface.h raft.pb.o raft.grpc.pb.o
+	$(CXX) $(CXXFLAGS) $^ $(LDFLAGS) -o $@
 
 %.grpc.pb.cc: %.proto
 	$(PROTOC) -I $(PROTOS_PATH) --grpc_out=. --plugin=protoc-gen-grpc=$(GRPC_CPP_PLUGIN_PATH) $<
