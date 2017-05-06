@@ -30,3 +30,14 @@ message RequestVoteResponse {
 	int32 term = 1;
 	int32 voteGranted = 2;
 }
+
+message LogEntry {
+	int32 term = 1;
+	string command = 2;
+}
+
+message PersistentState {
+  int32 currentTerm = 1;
+  int32 votedFor = 2;
+  repeated LogEntry log = 3;
+}
