@@ -1,4 +1,10 @@
 #include "RaftServer.h"
+#include <grpc/grpc.h>
+#include <grpc++/server.h>
+#include <grpc++/server_builder.h>
+#include <grpc++/server_context.h>
+#include <grpc++/security/server_credentials.h>
+#include "raft.grpc.pb.h"
 
 #include <utility>
 #include <fstream>
@@ -6,76 +12,56 @@
 using std::string;
 using std::unique_ptr;
 
-RaftServerImpl::RaftServerImpl(
-  int id,
-  unique_ptr<RequestInterface> o_requestImpl,
-  unique_ptr<ResponseInterface> o_responseImpl,
-  unique_ptr<StateMachineInterface> o_stateMachine,
-  unique_ptr<StorageInterface> o_storageImpl,
-  unique_ptr<AlarmServiceInterface> o_alarmService,
-  const std::vector<string>& hostList,
-  const string& logFile
-):
-myId(id),
-requestImpl(std::move(o_requestImpl)),
-responseImpl(std::move(o_responseImpl)),
+using grpc::Status;
+using grpc::ServerContext;
+using raft::AppendEntriesRequest;
+using raft::AppendEntriesResponse;
+using raft::RequestVoteRequest;
+using raft::RequestVoteResponse;
+
+RaftServer::RaftServer(int o_id, const std::vector<string>& o_hostList,
+                       const string& o_logFile,
+                       std::unique_ptr<StateMachineInterface> o_stateMachine):
+id(o_id),
+hostList(o_hostList),
+logFile(o_logFile),
 stateMachine(std::move(o_stateMachine)),
-storageImpl(std::move(o_storageImpl)),
-alarmService(std::move(o_alarmService)),
 mustBecomeCandidate(false),
 hostCount(hostList.size()),
 commitIndex(-1),
 lastApplied(-1),
 currentLeader(-1),
-serverState(ServerState::Follower)
-{
-  requestImpl->Initialize(hostList, this);
-  responseImpl->Initialize(this);
-  storageImpl->Initialize(logFile);
-  storageImpl->InitializeState(&currentTerm, &votedFor, &log);
+serverState(ServerState::Follower) { }
 
-  distribution = std::uniform_int_distribution<int>(
-    minElectionTimeout,
-    maxElectionTimeout
-  );
-  PickElectionTimeout = std::bind(distribution, generator);
-
-  Run();
-}
-
-// Called from this object
-void RaftServerImpl::BecomeFollower() {
+void RaftServer::BecomeFollower() {
   serverState = ServerState::Follower;
 }
 
-// Called by the election alarm (by alarmService)
-void RaftServerImpl::BecomeCandidate() {
+void RaftServer::BecomeCandidate() {
   mustBecomeCandidate = true;
   std::lock_guard<std::mutex> lock(overallLock);
-  if (not mustBecomeCandidate) {
+  if (!mustBecomeCandidate) {
     return;
   }
 
   serverState = ServerState::Candidate;
   currentTerm++;
-  votedFor = myId;
-  storageImpl->Update(currentTerm, votedFor, log);
-  alarmService->ResetElectionTimeout(PickElectionTimeout());
+  votedFor = id;
+  // storageImpl->Update(currentTerm, votedFor, log);
+  // alarmService->ResetElectionTimeout(PickElectionTimeout());
 
-  for(int id = 0; id < hostCount; id++) {
-    if(id != myId) {
-      requestImpl->RequestVote(
-        id,
-        currentTerm,
-        myId,
-        log.size() - 1,
-        log.back().term);
+  for(int i = 0; i < hostCount; i++) {
+    if(i != id) {
+      // requestImpl->RequestVote(
+      //   i,
+      //   currentTerm,
+      //   log.size() - 1,
+      //   log.back().term);
     }
   }
 }
 
-// Called by requestImpl
-void RaftServerImpl::RequestVoteCallback(int responseTerm, bool voteGranted) {
+void RaftServer::RequestVoteCallback(int responseTerm, bool voteGranted) {
   std::lock_guard<std::mutex> lock(overallLock);
   if (responseTerm > currentTerm) {
     currentTerm = responseTerm;
@@ -87,118 +73,92 @@ void RaftServerImpl::RequestVoteCallback(int responseTerm, bool voteGranted) {
     votesGained++;
   }
   if (votesGained > hostCount/2) { 
-    BecomeLeader();
+    // BecomeLeader();
   }
 }
 
-// Called by responseImpl
-void RaftServerImpl::HandleAppendEntries(
-  int leaderTerm,
-  int leaderId,
-  int prevLogIndex,
-  int prevLogTerm,
-  const std::vector<LogEntry>& entries,
-  int leaderCommit,
-  int * responseTerm,
-  bool * success
-) {
+Status RaftServer::AppendEntries(ServerContext* context,
+                                   const AppendEntriesRequest* request,
+                                   AppendEntriesResponse *response) {
   std::lock_guard<std::mutex> lock(overallLock);
 
-  bool mustUpdateStorage = false;
-  *responseTerm = currentTerm;
-
-  if (leaderTerm < currentTerm) {
-    *success = false;
-    return;
-  }
-
-  if (leaderTerm > currentTerm) {
-    currentTerm = leaderTerm;
+  response->set_term(currentTerm);
+  response->set_success(false);
+  if (request->term() < currentTerm) {
+    return Status::OK;
+  } else if (request->term() > currentTerm) {
+    currentTerm = request->term();
     BecomeFollower();
-    mustUpdateStorage = true;
-  }
-  else if (serverState == ServerState::Candidate) {
-    // note: if we're here, leaderTerm == currentTerm
+  } else if (serverState == ServerState::Candidate) { 
+    // leaderTerm == currentTerm
     BecomeFollower();
   }
 
-  if (prevLogIndex >= log.size()
-           || log[prevLogIndex].term != prevLogTerm) {
-    *success = false;
-    return;
+  if (request->prevlogindex() >= log.size() ||
+      log[request->prevlogindex()].term() != request->prevlogterm()) {
+    return Status::OK;
   }
 
-  uint curLogIndex = prevLogIndex + 1;
-  bool mustAppend = false;
-  for (LogEntry entry: entries) {
-    if (mustAppend) {
-      log.push_back(entry);
-      mustUpdateStorage = true;
-    }
-    else if (curLogIndex >= log.size()) {
-      mustAppend = true;
-    }
-    else if (log[curLogIndex].term != entry.term) {
+  uint curLogIndex = request->prevlogindex() + 1;
+  for (string entry: request->entries()) {
+    if (log[curLogIndex].term() != request->term()) {
       log.resize(curLogIndex);
-      mustUpdateStorage = true;
-      mustAppend = true;
+    }
+    if (curLogIndex >= log.size()) {
+      LogEntry new_entry;
+      new_entry.set_term(request->term());
+      new_entry.set_command(entry);
+      log.push_back(new_entry);
     }
     curLogIndex++;
   }
 
-  if(leaderCommit > commitIndex) {
-    commitIndex = std::min(leaderCommit, int(log.size() - 1));
+  if(request->leadercommit() > commitIndex) {
+    commitIndex = std::min(request->leadercommit(), int(log.size() - 1));
     while(lastApplied < commitIndex) {
       lastApplied++;
-      stateMachine->Process(log[lastApplied].command);
+      stateMachine->Apply(log[lastApplied].command());
     }
   }
 
-  if(mustUpdateStorage) {
-    storageImpl->Update(currentTerm, votedFor, log);
-  }
+  UpdateStorage();
+  currentLeader = request->leaderid();
+  response->set_success(true);
 
-  currentLeader = leaderId;
-  mustBecomeCandidate = false;
-  *success = true;
+  return Status::OK;
 }
 
-// called by responseImpl
-void RaftServerImpl::HandleRequestVote(
-  int candidateTerm,
-  int candidateId,
-  int lastLogIndex,
-  int lastLogTerm,
-  int * responseTerm,
-  bool * voteGranted
-) {
+Status RaftServer::RequestVote(ServerContext* context,
+                             const RequestVoteRequest* request,
+                             RequestVoteResponse* response) {
   std::lock_guard<std::mutex> lock(overallLock);
 
-  *responseTerm = currentTerm;
+  response->set_term(currentTerm);
+  response->set_votegranted(false);
 
-  if(candidateTerm < currentTerm) {
-    *voteGranted = false;
-    return;
+  if(request->term() < currentTerm) {
+    return Status::OK;
   }
 
-  if (candidateTerm > currentTerm) {
-    currentTerm = candidateTerm;
+  if (request->term() > currentTerm) {
+    currentTerm = request->term();
     BecomeFollower();
   }
 
-  if(votedFor != -1 && votedFor != candidateId) {
-    *voteGranted = false;
-    return;
+  if(votedFor != -1 && votedFor != request->candidateid()) {
+    return Status::OK;
   }
 
-  if (log.back().term > lastLogTerm ||
-     (log.back().term == lastLogTerm && log.size() - 1 > lastLogIndex)) {
-    *voteGranted = false;
-    return;
+  if (log.back().term() > request->lastlogterm() ||
+     (log.back().term() == request->lastlogterm() &&
+      log.size() - 1 > request->lastlogindex())) {
+    return Status::OK;
   }
 
-  votedFor = candidateId;
-  storageImpl->Update(currentTerm, votedFor, log);
-  *voteGranted = true;
-  mustBecomeCandidate = false;
+  ResetElectionTimeout();
+  UpdateStorage();
+  votedFor = request->candidateid();
+  response->set_votegranted(true);
+
+  return Status::OK;
 }

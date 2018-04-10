@@ -39,5 +39,4 @@ message LogEntry {
 message PersistentState {
   int32 currentTerm = 1;
   int32 votedFor = 2;
-  repeated LogEntry log = 3;
 }

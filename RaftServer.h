@@ -1,81 +1,87 @@
 #pragma once
 
-#include "RaftInterface.h"
 #include <memory>
 #include <vector>
 #include <mutex>
 #include <random>
 
-using std::unique_ptr;
+#include <grpc/grpc.h>
+#include <grpc++/server.h>
+#include <grpc++/server_builder.h>
+#include <grpc++/server_context.h>
+#include <grpc++/security/server_credentials.h>
+#include "raft.grpc.pb.h"
+
 using std::string;
+using grpc::Status;
+using grpc::ServerContext;
+using raft::Raft;
+using raft::LogEntry;
+using raft::AppendEntriesRequest;
+using raft::AppendEntriesResponse;
+using raft::RequestVoteRequest;
+using raft::RequestVoteResponse;
 
 enum class ServerState { Leader, Candidate, Follower };
 
-class RaftServerImpl {
+class StateMachineInterface {
 public:
-  RaftServerImpl(
-    int id,
-    unique_ptr<RequestInterface> o_requestImpl,
-    unique_ptr<ResponseInterface> o_responseImpl,
-    unique_ptr<StateMachineInterface> o_stateMachine,
-    unique_ptr<StorageInterface> o_storageImpl,
-    unique_ptr<AlarmServiceInterface> o_alarmService,
-    const std::vector<std::string>& hostList,
-    const string& logFile
+  virtual void Apply(const string& command);
+};
+
+class RaftServer final : public Raft::Service {
+public:
+  RaftServer(
+    int o_id,
+    const std::vector<std::string>& o_hostList,
+    const std::string& o_logFile,
+    std::unique_ptr<StateMachineInterface> o_stateMachine
   );
   void Run();
-  void HandleAppendEntries(
-    int leaderTerm,
-    int leaderId,
-    int prevLogIndex,
-    int prevLogTerm,
-    const std::vector<LogEntry>& entries,
-    int leaderCommit,
-    int * responseTerm,
-    bool * success
-  );
-  void HandleRequestVote(
-    int candidateTerm,
-    int candidateId,
-    int lastLogIndex,
-    int lastLogTerm,
-    int * responseTerm,
-    bool * voteGranted
-  );
-  void AppendEntriesCallback(int responseTerm, bool success);
-  void RequestVoteCallback(int responseTerm, bool voteGranted);
 
 private:
+  Status AppendEntries(ServerContext* context,
+                                   const AppendEntriesRequest* request,
+                                   AppendEntriesResponse *response) override;
+  Status RequestVote(ServerContext* context,
+                             const RequestVoteRequest* request,
+                             RequestVoteResponse* response) override;
+
+
+  void AppendEntriesCallback(int responseTerm, bool success);
+  void RequestVoteCallback(int responseTerm, bool voteGranted);
+  
   void BecomeFollower();
   void BecomeCandidate();
   void BecomeLeader();
-  void SendHeartbeat();
 
-  int myId;
-  unique_ptr<RequestInterface> requestImpl;
-  unique_ptr<ResponseInterface> responseImpl;
-  unique_ptr<StateMachineInterface> stateMachine;
-  unique_ptr<StorageInterface> storageImpl;
-  unique_ptr<AlarmServiceInterface> alarmService;
+  void SetAlarm(int after_ms);
+  void AlarmCallback();
+  void ResetElectionTimeout();
 
+  void UpdateStorage();
+
+  int id;
   std::mutex overallLock;
   bool mustBecomeCandidate;
   int hostCount;
   int votesGained;
+  std::string hostFile, logFile;
+  std::vector<std::string> hostList;
 
   // persistent state
   int currentTerm, votedFor;
   std::vector<LogEntry> log;
 
-  // volatile state (common)
+  // volatile state (all servers)
   int commitIndex, lastApplied, currentLeader;
   ServerState serverState;
 
-  // volatile state (valid if this object is leader)
+  // volatile state (for leaders)
   std::vector<int> nextIndex, matchIndex;
 
+  std::unique_ptr<StateMachineInterface> stateMachine;
+
   const static int minElectionTimeout = 150000, maxElectionTimeout = 300000;
-  std::default_random_engine generator;
-  std::uniform_int_distribution<int> distribution;
-  std::function<int(void)> PickElectionTimeout;
+  const static int heartbeatInterval = 50000;
 };
