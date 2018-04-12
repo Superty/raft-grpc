@@ -86,11 +86,9 @@ Status RaftServer::AppendEntries(ServerContext* context,
   response->set_success(false);
   if (request->term() < currentTerm) {
     return Status::OK;
-  } else if (request->term() > currentTerm) {
+  } else {
+	// request->term() >= currentTerm
     currentTerm = request->term();
-    BecomeFollower();
-  } else if (serverState == ServerState::Candidate) { 
-    // leaderTerm == currentTerm
     BecomeFollower();
   }
 
