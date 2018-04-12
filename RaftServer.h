@@ -12,6 +12,8 @@
 #include <grpc++/security/server_credentials.h>
 #include "raft.grpc.pb.h"
 
+#include "Storage.h"
+
 using std::string;
 using grpc::Status;
 using grpc::ServerContext;
@@ -33,8 +35,8 @@ class RaftServer final : public Raft::Service {
 public:
   RaftServer(
     int o_id,
-    const std::vector<std::string>& o_hostList,
-    const std::string& o_logFile,
+    const std::vector<std::string>& hostList,
+    const std::string& storageDir,
     std::unique_ptr<StateMachineInterface> o_stateMachine
   );
   void Run();
@@ -47,7 +49,6 @@ private:
                              const RequestVoteRequest* request,
                              RequestVoteResponse* response) override;
 
-
   void AppendEntriesCallback(int responseTerm, bool success);
   void RequestVoteCallback(int responseTerm, bool voteGranted);
   
@@ -59,15 +60,12 @@ private:
   void AlarmCallback();
   void ResetElectionTimeout();
 
-  void UpdateStorage();
-
   int id;
   std::mutex overallLock;
   bool mustBecomeCandidate;
   int hostCount;
   int votesGained;
-  std::string hostFile, logFile;
-  std::vector<std::string> hostList;
+  Storage storage;
 
   // persistent state
   int currentTerm, votedFor;

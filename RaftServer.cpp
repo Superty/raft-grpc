@@ -19,19 +19,18 @@ using raft::AppendEntriesResponse;
 using raft::RequestVoteRequest;
 using raft::RequestVoteResponse;
 
-RaftServer::RaftServer(int o_id, const std::vector<string>& o_hostList,
-                       const string& o_logFile,
+RaftServer::RaftServer(int o_id, const std::vector<string>& hostList,
+                       const string& storageDir,
                        std::unique_ptr<StateMachineInterface> o_stateMachine):
 id(o_id),
-hostList(o_hostList),
-logFile(o_logFile),
 stateMachine(std::move(o_stateMachine)),
 mustBecomeCandidate(false),
 hostCount(hostList.size()),
 commitIndex(-1),
 lastApplied(-1),
 currentLeader(-1),
-serverState(ServerState::Follower) { }
+serverState(ServerState::Follower),
+storage(storageDir) {}
 
 void RaftServer::BecomeFollower() {
   serverState = ServerState::Follower;
@@ -84,6 +83,7 @@ Status RaftServer::AppendEntries(ServerContext* context,
 
   response->set_term(currentTerm);
   response->set_success(false);
+  
   if (request->term() < currentTerm) {
     return Status::OK;
   } else {
@@ -98,9 +98,13 @@ Status RaftServer::AppendEntries(ServerContext* context,
   }
 
   uint curLogIndex = request->prevlogindex() + 1;
+  bool mustRecreateLog = false;
+  int startIndex = 0;
   for (string entry: request->entries()) {
     if (log[curLogIndex].term() != request->term()) {
       log.resize(curLogIndex);
+      mustRecreateLog = true;
+      startIndex = curLogIndex;
     }
     if (curLogIndex >= log.size()) {
       LogEntry new_entry;
@@ -110,6 +114,8 @@ Status RaftServer::AppendEntries(ServerContext* context,
     }
     curLogIndex++;
   }
+  storage.UpdateState(currentTerm, votedFor);
+  storage.UpdateLog(log.cbegin() + startIndex, log.cend(), !mustRecreateLog);
 
   if(request->leadercommit() > commitIndex) {
     commitIndex = std::min(request->leadercommit(), int(log.size() - 1));
@@ -119,7 +125,6 @@ Status RaftServer::AppendEntries(ServerContext* context,
     }
   }
 
-  UpdateStorage();
   currentLeader = request->leaderid();
   response->set_success(true);
 
@@ -154,9 +159,10 @@ Status RaftServer::RequestVote(ServerContext* context,
   }
 
   ResetElectionTimeout();
-  UpdateStorage();
+  storage.UpdateState(currentTerm, votedFor);
   votedFor = request->candidateid();
   response->set_votegranted(true);
 
   return Status::OK;
 }
+

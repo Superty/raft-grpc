@@ -51,14 +51,17 @@ all: system-check RaftServer
 # test: test.cpp RaftServer.o
 # 	$(CXX) $(CXXFLAGS) $^ $(LDFLAGS) -o $@
 
-RaftServer: RaftServer.cpp raft.pb.o raft.grpc.pb.o
-	$(CXX) $(CXXFLAGS) $^ $(LDFLAGS) -o $@
-
 %.grpc.pb.cc: %.proto
 	$(PROTOC) -I $(PROTOS_PATH) --grpc_out=. --plugin=protoc-gen-grpc=$(GRPC_CPP_PLUGIN_PATH) $<
 
 %.pb.cc: %.proto
 	$(PROTOC) -I $(PROTOS_PATH) --cpp_out=. $<
+
+Storage: Storage.cpp raft.pb.o
+	$(CXX) $(CXXFLAGS) $^ $(LDFLAGS) -o $@
+	
+RaftServer: RaftServer.cpp raft.pb.o raft.grpc.pb.o Storage.o
+	$(CXX) $(CXXFLAGS) $^ $(LDFLAGS) -o $@
 
 clean:
 	rm -f *.o *.pb.cc *.pb.h raft_client raft_server
