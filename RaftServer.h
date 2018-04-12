@@ -67,6 +67,8 @@ private:
   int votesGained;
   Storage storage;
 
+  std::vector<std::unique_ptr<Raft::Stub>> stubs;
+
   // persistent state
   int currentTerm, votedFor;
   std::vector<LogEntry> log;

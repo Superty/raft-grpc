@@ -4,14 +4,14 @@
 #include <grpc++/server_builder.h>
 #include <grpc++/server_context.h>
 #include <grpc++/security/server_credentials.h>
+#include <grpc++/create_channel.h>
 #include "raft.grpc.pb.h"
 
 #include <utility>
 #include <fstream>
+#include <memory>
 
 using std::string;
-using std::unique_ptr;
-
 using grpc::Status;
 using grpc::ServerContext;
 using raft::AppendEntriesRequest;
@@ -30,7 +30,16 @@ commitIndex(-1),
 lastApplied(-1),
 currentLeader(-1),
 serverState(ServerState::Follower),
-storage(storageDir) {}
+storage(storageDir) {
+  for (int i = 0; i < hostCount; i++) {
+    if (i == id) {
+      stubs.push_back(nullptr);
+    } else {
+      stubs.emplace_back(Raft::NewStub(
+        grpc::CreateChannel(hostList[i], grpc::InsecureChannelCredentials())));
+    }
+  }
+}
 
 void RaftServer::BecomeFollower() {
   serverState = ServerState::Follower;
@@ -87,7 +96,7 @@ Status RaftServer::AppendEntries(ServerContext* context,
   if (request->term() < currentTerm) {
     return Status::OK;
   } else {
-	// request->term() >= currentTerm
+	  // request->term() >= currentTerm
     currentTerm = request->term();
     BecomeFollower();
   }
@@ -165,4 +174,3 @@ Status RaftServer::RequestVote(ServerContext* context,
 
   return Status::OK;
 }
-

@@ -31,7 +31,7 @@
 
 CXX = g++
 CPPFLAGS += -I/usr/local/include -pthread
-CXXFLAGS += -std=c++11 -fdiagnostics-color=always
+CXXFLAGS += -std=c++14 -fdiagnostics-color=always
 LDFLAGS += -L/usr/local/lib `pkg-config --libs grpc++`            \
            -Wl,--no-as-needed -lgrpc++_reflection -Wl,--as-needed \
            -lprotobuf -lpthread -ldl
