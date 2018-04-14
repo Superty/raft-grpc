@@ -51,13 +51,13 @@ private:
 
   void AppendEntriesCallback(int responseTerm, bool success);
   void RequestVoteCallback(int responseTerm, bool voteGranted);
-  
+
   void BecomeFollower();
   void BecomeCandidate();
   void BecomeLeader();
 
   void SetAlarm(int after_ms);
-  void AlarmCallback();
+  void AlarmCallback(int signum);
   void ResetElectionTimeout();
 
   int id;

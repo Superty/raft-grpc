@@ -80,7 +80,7 @@ void RaftServer::RequestVoteCallback(int responseTerm, bool voteGranted) {
   if (voteGranted) {
     votesGained++;
   }
-  if (votesGained > hostCount/2) { 
+  if (votesGained > hostCount/2) {
     // BecomeLeader();
   }
 }
@@ -92,7 +92,7 @@ Status RaftServer::AppendEntries(ServerContext* context,
 
   response->set_term(currentTerm);
   response->set_success(false);
-  
+
   if (request->term() < currentTerm) {
     return Status::OK;
   } else {
@@ -173,4 +173,72 @@ Status RaftServer::RequestVote(ServerContext* context,
   response->set_votegranted(true);
 
   return Status::OK;
+}
+
+void RaftServer::SetAlarm(int after_ms) {
+  struct std::sigaction sa;
+  struct std::itimerval timer;
+
+  /* Configure timer intervals */
+  timer.it_value.tv_sec = 0;
+  timer.it_value.tv_usec = after_ms * 1000; // microseconds
+
+  timer.it_interval.tv_sec = 0;
+  timer.it_interval.tv_usec = after_ms * 1000; // microseconds
+
+  /* Set timer callback */
+  sa.sa_handler = &RaftServer::AlarmCallback;
+  sigaction (SIGALRM, &sa, NULL);
+
+  /* Set timer */
+  int old_errno = errno;
+  errno = 0;
+  std::setitimer(ITIMER_REAL, &timer, NULL);
+  if(errno) {
+    std::perror("An error occurred while trying to set the timer: ");
+  }
+  errno = old_errno;
+  return;
+}
+
+void RaftServer::AlarmCallback(int signum) {
+  BecomeCandidate();
+  return;
+}
+
+void RaftServer::ResetElectionTimeout() {
+  struct std::itimerval old_timer;
+  struct std::itimerval new_timer;
+
+  /* Get old timer to reset to old after_ms value */
+  int old_errno = errno;
+  errno = 0;
+  std::getitimer(ITIMER_REAL, &old_timer);
+  if(errno) {
+    std::perror("Error occurred getting old timer: ");
+    errno = old_errno;
+    return;
+  }
+  errno = old_errno;
+
+  /* Configure timer intervals
+   * The old_timer.it_value has the time remaining so far, so we don't use it.
+   * The old_timer.it_interval has the interval time, and since our timers are
+   * not one-shot, this interval is set and constant, so we can use this.
+   */
+  new_timer.it_value.tv_sec = old_timer.it_interval.tv_sec;
+  new_timer.it_value.tv_usec = old_timer.it_interval.tv_usec;
+
+  new_timer.it_interval.tv_sec = old_timer.it_interval.tv_sec;
+  new_timer.it_interval.tv_usec = old_timer.it_interval.tv_usec;
+
+  /* Set timer */
+  old_errno = errno;
+  errno = 0;
+  std::setitimer(ITIMER_REAL, &new_timer, &old_timer);
+  if(errno) {
+    std::perror("Error occurred trying to reset timer: ");
+  }
+  errno = old_errno;
+  return;
 }
