@@ -14,6 +14,10 @@
 
 #include "Storage.h"
 
+#include <csignal>
+#include <ctime>
+#include <cerrno>
+
 using std::string;
 using grpc::Status;
 using grpc::ServerContext;

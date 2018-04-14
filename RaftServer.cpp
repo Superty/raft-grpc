@@ -11,6 +11,10 @@
 #include <fstream>
 #include <memory>
 
+#include <csignal>
+#include <sys/time.h>
+#include <cerrno>
+
 using std::string;
 using grpc::Status;
 using grpc::ServerContext;
@@ -175,9 +179,13 @@ Status RaftServer::RequestVote(ServerContext* context,
   return Status::OK;
 }
 
+void RaftServer::AlarmCallback(int signum) {
+  BecomeCandidate();
+  return;
+}
+
 void RaftServer::SetAlarm(int after_ms) {
-  struct std::sigaction sa;
-  struct std::itimerval timer;
+  struct itimerval timer;
 
   /* Configure timer intervals */
   timer.it_value.tv_sec = 0;
@@ -187,13 +195,20 @@ void RaftServer::SetAlarm(int after_ms) {
   timer.it_interval.tv_usec = after_ms * 1000; // microseconds
 
   /* Set timer callback */
-  sa.sa_handler = &RaftServer::AlarmCallback;
-  sigaction (SIGALRM, &sa, NULL);
-
-  /* Set timer */
   int old_errno = errno;
   errno = 0;
-  std::setitimer(ITIMER_REAL, &timer, NULL);
+  signal(SIGALRM, (void(*)(int))&RaftServer::AlarmCallback);
+  if(errno) {
+    std::perror("Error occurred while trying to set signal handler: ");
+    errno = old_errno;
+    return;
+  }
+  errno = old_errno;
+
+  /* Set timer */
+  old_errno = errno;
+  errno = 0;
+  setitimer(ITIMER_REAL, &timer, nullptr);
   if(errno) {
     std::perror("An error occurred while trying to set the timer: ");
   }
@@ -201,19 +216,14 @@ void RaftServer::SetAlarm(int after_ms) {
   return;
 }
 
-void RaftServer::AlarmCallback(int signum) {
-  BecomeCandidate();
-  return;
-}
-
 void RaftServer::ResetElectionTimeout() {
-  struct std::itimerval old_timer;
-  struct std::itimerval new_timer;
+  struct itimerval old_timer;
+  struct itimerval new_timer;
 
   /* Get old timer to reset to old after_ms value */
   int old_errno = errno;
   errno = 0;
-  std::getitimer(ITIMER_REAL, &old_timer);
+  getitimer(ITIMER_REAL, &old_timer);
   if(errno) {
     std::perror("Error occurred getting old timer: ");
     errno = old_errno;
@@ -235,7 +245,7 @@ void RaftServer::ResetElectionTimeout() {
   /* Set timer */
   old_errno = errno;
   errno = 0;
-  std::setitimer(ITIMER_REAL, &new_timer, &old_timer);
+  setitimer(ITIMER_REAL, &new_timer, &old_timer);
   if(errno) {
     std::perror("Error occurred trying to reset timer: ");
   }

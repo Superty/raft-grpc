@@ -27,3 +27,6 @@
 *.exe
 *.out
 *.app
+
+# grpc header files
+*.pb.h
