@@ -57,12 +57,15 @@ all: system-check RaftServer
 %.pb.cc: %.proto
 	$(PROTOC) -I $(PROTOS_PATH) --cpp_out=. $<
 
-Storage: Storage.cpp raft.pb.o
+Storage.o: Storage.cpp
+	$(CXX) $(CXXFLAGS) $^ $(LDFLAGS) -c
+	
+RaftServer.o: RaftServer.cpp raft.grpc.pb.cc raft.pb.cc
+	$(CXX) $(CXXFLAGS) $^ $(LDFLAGS) -c
+
+StorageTest: StorageTest.cpp RaftServer.o Storage.o raft.grpc.pb.o raft.pb.o
 	$(CXX) $(CXXFLAGS) $^ $(LDFLAGS) -o $@
 	
-RaftServer: RaftServer.cpp raft.pb.o raft.grpc.pb.o Storage.o
-	$(CXX) $(CXXFLAGS) $^ $(LDFLAGS) -o $@
-
 clean:
 	rm -f *.o *.pb.cc *.pb.h raft_client raft_server
 

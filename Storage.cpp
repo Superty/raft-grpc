@@ -18,8 +18,8 @@ using google::protobuf::util::SerializeDelimitedToOstream;
 using google::protobuf::util::ParseDelimitedFromZeroCopyStream;
 
 Storage::Storage(const std::string& storageDir) {
-  logFile = storageDir + LOG_FILENAME;
-  stateFile = storageDir + STATE_FILENAME;
+  logFile = storageDir + "/" + LOG_FILENAME;
+  stateFile = storageDir + "/" + STATE_FILENAME;
 }
 
 void Storage::UpdateState(int currentTerm, int votedFor) {
@@ -40,7 +40,7 @@ void Storage::UpdateLog(LogEntryConstIterator cbegin,
 }
 
 void Storage::LoadFromStorage(int* currentTerm, int* votedFor,
-                     std::vector<LogEntry>* entries) {
+                     std::vector<LogEntry>* entries) const {
   std::ifstream stateStream(stateFile, std::ifstream::binary);
   stateStream >> *currentTerm >> *votedFor;
 

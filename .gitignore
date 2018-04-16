@@ -28,5 +28,9 @@
 *.out
 *.app
 
-# grpc header files
+# grpc files
 *.pb.h
+*.pb.cc
+
+# swp files
+*.swp

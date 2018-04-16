@@ -45,6 +45,9 @@ public:
   );
   void Run();
 
+  // Needs to be private to be called by free function signal handler
+  void AlarmCallback();
+
 private:
   Status AppendEntries(ServerContext* context,
                                    const AppendEntriesRequest* request,
@@ -61,7 +64,6 @@ private:
   void BecomeLeader();
 
   void SetAlarm(int after_ms);
-  void AlarmCallback(int signum);
   void ResetElectionTimeout();
 
   int id;
@@ -79,6 +81,7 @@ private:
 
   // volatile state (all servers)
   int commitIndex, lastApplied, currentLeader;
+  int electionTimeout;
   ServerState serverState;
 
   // volatile state (for leaders)

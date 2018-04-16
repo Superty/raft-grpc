@@ -26,7 +26,7 @@ class Storage {
   void UpdateLog(LogEntryConstIterator cbegin,
                  LogEntryConstIterator cend, bool append);
   void LoadFromStorage(int* currentTerm, int* votedFor,
-                       std::vector<LogEntry>* entries);
+                       std::vector<LogEntry>* entries) const;
 
  private:
   string logFile, stateFile;
