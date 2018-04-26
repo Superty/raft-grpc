@@ -16,7 +16,7 @@ message AppendEntriesRequest {
 	int32 leaderId = 2;
 	int32 prevLogIndex = 3;
 	int32 prevLogTerm = 4;
-	repeated string entries = 5;
+	repeated LogEntry entries = 5;
 	int32 leaderCommit = 6;
 }
 message AppendEntriesResponse {
@@ -46,5 +46,5 @@ message ServeClientRequest {
 
 message ServeClientResponse {
 	bool success = 1;
-	string currentMaster = 2;
+	int32 leaderId = 2;
 }

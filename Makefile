@@ -66,7 +66,10 @@ RaftServer.o: RaftServer.cpp raft.grpc.pb.cc raft.pb.cc
 StorageTest: StorageTest.cpp RaftServer.o Storage.o raft.grpc.pb.o raft.pb.o
 	$(CXX) $(CXXFLAGS) $^ $(LDFLAGS) -o $@
 	
-AlarmTest: AlarmTest.cpp RaftServer.o Storage.o raft.grpc.pb.o raft.pb.o
+Server: Server.cpp RaftServer.o Storage.o raft.grpc.pb.o raft.pb.o
+	$(CXX) $(CXXFLAGS) $^ $(LDFLAGS) -o $@
+
+Client: Client.cpp raft.grpc.pb.o raft.pb.o
 	$(CXX) $(CXXFLAGS) $^ $(LDFLAGS) -o $@
 
 clean:

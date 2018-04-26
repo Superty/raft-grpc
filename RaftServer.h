@@ -69,7 +69,8 @@ class RaftServer final : public Raft::Service {
   void ServeClients();
   void RunForElection();
   void ReplicateEntries();
-
+  void InvokeRequestVote(int voterId, std::atomic<int> *votesGained);
+  void InvokeAppendEntries(int o_id);
 
   // void AppendEntriesCallback(int responseTerm, bool success);
   // void RequestVoteCallback(int responseTerm, bool voteGranted);
@@ -82,6 +83,7 @@ class RaftServer final : public Raft::Service {
   void ResetElectionTimeout();
 
   void Narrate(const string& text);
+  void PrintLog();
 
   int id;
   std::mutex overallLock, stateLock;
@@ -113,6 +115,5 @@ class RaftServer final : public Raft::Service {
   std::unique_ptr<StateMachineInterface> stateMachine;
 
   // values are in milliseconds
-  const static int minElectionTimeout = 5000, maxElectionTimeout = 10000;
-  const static int heartbeatInterval = 500;
+  const static int minElectionTimeout, maxElectionTimeout, heartbeatInterval;
 };

@@ -14,10 +14,8 @@ int main(int argc, char **argv) {
   std::ifstream fin(argv[2]);
 
   std::string host;
-  std::cerr << id << '\n';
   while (fin >> host) {
     hosts.push_back(host);
-    std::cerr << host << '\n';
   }
 
   RaftServer server(id, hosts, ".", std::move(stateMachine));
