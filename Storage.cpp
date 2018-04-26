@@ -8,6 +8,9 @@
 #include "raft.pb.h"
 #include "Storage.h"
 
+#include <sys/stat.h>
+#include <sys/types.h>
+
 #include <utility>
 #include <fstream>
 
@@ -18,6 +21,7 @@ using google::protobuf::util::SerializeDelimitedToOstream;
 using google::protobuf::util::ParseDelimitedFromZeroCopyStream;
 
 Storage::Storage(const std::string& storageDir) {
+  mkdir(storageDir.c_str(), 0755);
   logFile = storageDir + "/" + LOG_FILENAME;
   stateFile = storageDir + "/" + STATE_FILENAME;
 }
@@ -42,7 +46,10 @@ void Storage::UpdateLog(LogEntryConstIterator cbegin,
 void Storage::LoadFromStorage(int* currentTerm, int* votedFor,
                      std::vector<LogEntry>* entries) const {
   std::ifstream stateStream(stateFile, std::ifstream::binary);
-  stateStream >> *currentTerm >> *votedFor;
+  if (!(stateStream >> *currentTerm >> *votedFor)) {
+    *currentTerm = 0;
+    *votedFor = -1;
+  }
 
   std::ifstream logStream(logFile, std::ifstream::binary);
   IstreamInputStream logInputStream(&logStream);

@@ -7,6 +7,10 @@ service Raft {
 	rpc RequestVote(RequestVoteRequest) returns (RequestVoteResponse) {}
 }
 
+service ClientService {
+	rpc ServeClient(ServeClientRequest) returns (ServeClientResponse) {}
+}
+
 message AppendEntriesRequest {
 	int32 term = 1;
 	int32 leaderId = 2;
@@ -36,7 +40,11 @@ message LogEntry {
 	string command = 2;
 }
 
-// message PersistentState {
-//   int32 currentTerm = 1;
-//   int32 votedFor = 2;
-// }
+message ServeClientRequest {
+	string command = 1;
+}
+
+message ServeClientResponse {
+	bool success = 1;
+	string currentMaster = 2;
+}

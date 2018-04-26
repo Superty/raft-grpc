@@ -31,7 +31,7 @@
 
 CXX = g++
 CPPFLAGS += -I/usr/local/include -pthread
-CXXFLAGS += -std=c++14 -fdiagnostics-color=always
+CXXFLAGS += -std=c++14 -fdiagnostics-color=always -g
 LDFLAGS += -L/usr/local/lib `pkg-config --libs grpc++`            \
            -Wl,--no-as-needed -lgrpc++_reflection -Wl,--as-needed \
            -lprotobuf -lpthread -ldl
@@ -57,7 +57,7 @@ all: system-check RaftServer
 %.pb.cc: %.proto
 	$(PROTOC) -I $(PROTOS_PATH) --cpp_out=. $<
 
-Storage.o: Storage.cpp
+Storage.o: Storage.cpp raft.grpc.pb.cc raft.pb.cc
 	$(CXX) $(CXXFLAGS) $^ $(LDFLAGS) -c
 	
 RaftServer.o: RaftServer.cpp raft.grpc.pb.cc raft.pb.cc
@@ -66,6 +66,9 @@ RaftServer.o: RaftServer.cpp raft.grpc.pb.cc raft.pb.cc
 StorageTest: StorageTest.cpp RaftServer.o Storage.o raft.grpc.pb.o raft.pb.o
 	$(CXX) $(CXXFLAGS) $^ $(LDFLAGS) -o $@
 	
+AlarmTest: AlarmTest.cpp RaftServer.o Storage.o raft.grpc.pb.o raft.pb.o
+	$(CXX) $(CXXFLAGS) $^ $(LDFLAGS) -o $@
+
 clean:
 	rm -f *.o *.pb.cc *.pb.h raft_client raft_server
 
