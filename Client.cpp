@@ -34,7 +34,7 @@ int main(int argc, char **argv) {
   std::string host;
   while (fin >> host) {
     hosts.push_back(host);
-    std::cerr << host << '\n';
+    // std::cerr << host << '\n';
   }
 
   int hostCount = hosts.size();
@@ -46,8 +46,10 @@ int main(int argc, char **argv) {
   }
 
   int leaderId = 0;
+  std::cout << "Enter commands to send to the replicated state machine.\n";
   while (true) {
     string command;
+    std::cout << "> ";
     std::getline(std::cin, command);
 
     while (true) {

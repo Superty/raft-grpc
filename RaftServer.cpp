@@ -33,8 +33,8 @@ using raft::RequestVoteResponse;
 using raft::ServeClientRequest;
 using raft::ServeClientResponse;
 
-const int RaftServer::minElectionTimeout = 500;
-const int RaftServer::maxElectionTimeout = 1000;
+const int RaftServer::minElectionTimeout = 800;
+const int RaftServer::maxElectionTimeout = 1600;
 const int RaftServer::heartbeatInterval = 50;
 
 RaftServer* alarmHandlerServer;
@@ -91,18 +91,6 @@ void RaftServer::Run() {
   cq = builder.AddCompletionQueue();
   server = builder.BuildAndStart();
 
-  // while (true) {
-  //   ClientContext context;
-  //   RequestVoteResponse response;
-  //   RequestVoteRequest request;
-  //   request.set_term(currentTerm);
-  //   request.set_candidateid(id);
-  //   request.set_lastlogindex(log.size() - 1);
-  //   std::cerr << "Sending request to server" <<  (id ^ 1) << "\n";
-  //   auto status = stubs[id ^ 1]->RequestVote(&context, request, &response);
-  //   std::cout << status.error_message() << '\n' << response.term() << '\n';
-  // }
-
   srand(time(NULL) + id);
   ResetElectionTimeout();
   SetAlarm(electionTimeout);
@@ -123,7 +111,7 @@ void RaftServer::ServeClients() {
     bool ok = false;
     do {
       cq->Next(&tag, &ok);
-      std::cout << "GOT TAG = " << (long long) tag << ", OK = " << ok << "\n";
+      // std::cout << "GOT TAG = " << (long long) tag << ", OK = " << ok << "\n";
     } while(tag != (void*)&responders.back());
 
     if (serverState != ServerState::Leader) {
@@ -131,7 +119,7 @@ void RaftServer::ServeClients() {
       response.set_success(false);
       response.set_leaderid(currentLeader);
       responders.back().Finish(response, Status::OK, (void*)&responders.back());
-      std::cout << "RESPONDING TO TAG = " << (long long) tag << '\n';
+      // std::cout << "RESPONDING TO TAG = " << (long long) tag << '\n';
     } else {
       LogEntry entry;
       entry.set_command(request.command());
@@ -144,7 +132,10 @@ void RaftServer::ServeClients() {
       response.set_success(true);
       response.set_leaderid(currentLeader);
       responders.back().Finish(response, Status::OK, (void*)&responders.back());
-      std::cout << "APPENDING ENTRY FROM TAG = " << (long long) tag << '\n';
+      // std::cout << "APPENDING ENTRY FROM TAG = " << (long long) tag << '\n';
+      std::cerr << '\n';
+      PrintLog();
+      std::cerr << '\n';
     }
   }
 }
@@ -158,9 +149,6 @@ void RaftServer::BecomeFollower() {
 }
 
 void RaftServer::BecomeCandidate() {
-  // std::lock_guard<std::mutex> lock(overallLock);
-  // Narrate("Becoming candidate. Current Term = ");
-
   serverState = ServerState::Candidate;
   currentTerm++;
 
@@ -177,15 +165,13 @@ void RaftServer::BecomeCandidate() {
 void RaftServer::InvokeRequestVote(int voterId, std::atomic<int> *votesGained) {
   ClientContext context;
   context.set_deadline(std::chrono::system_clock::now() + 
-    std::chrono::milliseconds(electionTimeout + maxElectionTimeout));
+    std::chrono::milliseconds(heartbeatInterval));
 
   RequestVoteRequest request;
   request.set_term(currentTerm);
   request.set_candidateid(id);
   request.set_lastlogindex(log.size() - 1);
-  if (!log.empty()) {
-    request.set_lastlogterm(log.back().term());
-  }
+  request.set_lastlogterm(log.empty() ? -1 : log.back().term());
 
   RequestVoteResponse response;
 
@@ -193,7 +179,10 @@ void RaftServer::InvokeRequestVote(int voterId, std::atomic<int> *votesGained) {
   auto status = stubs[voterId]->RequestVote(&context, request, &response);
   
   std::cerr << "Vote request to " << voterId << ": " << status.error_message() << '\n';
-  if(!status.ok() || currentTerm != request.term()) {
+
+  // stateLock.lock();
+  // std::cerr << "ENTERED STATELOCK\n";
+  if(!status.ok() || currentTerm != request.term() ) {
     return;
   }
 
@@ -206,6 +195,8 @@ void RaftServer::InvokeRequestVote(int voterId, std::atomic<int> *votesGained) {
   if (response.votegranted()) {
     (*votesGained)++;
   }
+  std::cerr << "Gained " << (*votesGained) << " votes.\n";
+  // stateLock.unlock();
 }
 
 void RaftServer::RunForElection() {
@@ -240,13 +231,14 @@ void RaftServer::InvokeAppendEntries(int o_id) {
   request.set_prevlogterm(
     (nextIndex[o_id] - 1 == -1) ? -1 : log[nextIndex[o_id] - 1].term());
 
-  std::cerr << "Sending AppendEntries to " << o_id << '\n';
-  std::cerr << "nextIndex = " << nextIndex[o_id] << ", following entries: ";
+  std::cerr << o_id;
+  // std::cerr << "Sending AppendEntries to " << o_id << '\n';
+  // std::cerr << "nextIndex = " << nextIndex[o_id] << ", following entries: ";
   for (int i = nextIndex[o_id]; i < log.size(); i++) {
     *request.add_entries() = log[i];
-    std::cerr << log[i].command() << ' ';
+    // std::cerr << log[i].command() << ' ';
   }
-  std::cerr << '\n';
+  // std::cerr << '\n';
 
   AppendEntriesResponse response;
 
@@ -289,7 +281,6 @@ void RaftServer::InvokeAppendEntries(int o_id) {
 }
 
 void RaftServer::ReplicateEntries() {
-  // Narrate("Replicating entries.");
   SetAlarm(heartbeatInterval);
 
   for (int i = 0; i < hostCount; i++) {
@@ -300,7 +291,7 @@ void RaftServer::ReplicateEntries() {
 }
 
 void RaftServer::BecomeLeader() {
-  Narrate("Becoming the leader!");
+  std::cerr << "Becoming the leader!\n";
   currentLeader = id;
   serverState = ServerState::Leader;
   firstResponderIndex = log.size();
@@ -312,7 +303,6 @@ void RaftServer::BecomeLeader() {
 }
 
 void RaftServer::AlarmCallback() {
-  // Narrate("Alarm timed out!");
   if (serverState == ServerState::Leader) {
     ReplicateEntries();
   } else {
@@ -321,32 +311,12 @@ void RaftServer::AlarmCallback() {
 }
 
 void RaftServer::PrintLog() {
-  std::cerr << "[";
+  std::cerr << "log = [";
   for (auto entry : log) {
     std::cerr << '(' << entry.term() << ", " << entry.command() << "), ";
   }
   std::cerr << "]\n";
 }
-
-void RaftServer::Narrate(const string& text) {
-  std::cout << text << '\n';
-}
-
-// void RaftServer::RequestVoteCallback(int responseTerm, bool voteGranted) {
-//   std::lock_guard<std::mutex> lock(overallLock);
-//   if (responseTerm > currentTerm) {
-//     currentTerm = responseTerm;
-//     BecomeFollower();
-//     return;
-//   }
-
-//   if (voteGranted) {
-//     votesGained++;
-//   }
-//   if (votesGained > hostCount/2) {
-//     // BecomeLeader();
-//   }
-// }
 
 Status RaftServer::AppendEntries(ServerContext* context,
                                    const AppendEntriesRequest* request,
@@ -359,7 +329,6 @@ Status RaftServer::AppendEntries(ServerContext* context,
   if (request->term() < currentTerm) {
     return Status::OK;
   } else {
-    // request->term() >= currentTerm
     currentTerm = request->term();
     BecomeFollower();
   }
@@ -369,10 +338,6 @@ Status RaftServer::AppendEntries(ServerContext* context,
   if (request->prevlogindex() >= int(log.size()) ||
       (request->prevlogindex() != -1 && 
        log[request->prevlogindex()].term() != request->prevlogterm())) {
-    // std::cerr << "AppendEntries debug log:\n";
-    // std::cerr << request->DebugString();
-    // std::cerr << log.size() << ' ' << (request->prevlogindex() >= log.size() || (request->prevlogindex() != -1 && 
-    //    log[request->prevlogindex()].term() != request->prevlogterm())) << '\n'; 
     return Status::OK;
   }
 
@@ -405,8 +370,15 @@ Status RaftServer::AppendEntries(ServerContext* context,
     }
   }
 
+
   currentLeader = request->leaderid();
   response->set_success(true);
+
+  if (request->entries_size() > 0) {
+    std::cerr << '\n';
+    PrintLog();
+    std::cerr << '\n';
+  }
 
   return Status::OK;
 }
@@ -414,7 +386,7 @@ Status RaftServer::AppendEntries(ServerContext* context,
 Status RaftServer::RequestVote(ServerContext* context,
                              const RequestVoteRequest* request,
                              RequestVoteResponse* response) {
-  std::cerr << "Got RequestVote.\n";
+  std::cerr << "Got RequestVote from " << request->candidateid() << ".\n";
   std::lock_guard<std::mutex> lock(overallLock);
 
   response->set_term(currentTerm);
@@ -429,9 +401,11 @@ Status RaftServer::RequestVote(ServerContext* context,
     BecomeFollower();
   } else if(votedFor != -1 && votedFor != request->candidateid()) {
     return Status::OK;
-  } else if (log.back().term() > request->lastlogterm() ||
+  }
+
+  if (!log.empty() && (log.back().term() > request->lastlogterm() ||
      (log.back().term() == request->lastlogterm() &&
-      log.size() - 1 > request->lastlogindex())) {
+      log.size() - 1 > request->lastlogindex()))) {
     return Status::OK;
   }
 
@@ -440,16 +414,15 @@ Status RaftServer::RequestVote(ServerContext* context,
   votedFor = request->candidateid();
   response->set_votegranted(true);
 
-  std::cerr << "Responding to RequestVote.\n";
+  std::cerr << "Granting vote to " << request->candidateid() << ".\n";
 
   return Status::OK;
 }
 
 void RaftServer::SetAlarm(int after_ms) {
-  if (serverState != ServerState::Leader) {
-    std::cerr << "Setting alarm for " << after_ms << "ms.\n";
+  if (serverState == ServerState::Follower) {
+    std::cerr << ".";
   }
-  PrintLog();
 
   struct itimerval timer;
 
@@ -473,5 +446,4 @@ void RaftServer::SetAlarm(int after_ms) {
 void RaftServer::ResetElectionTimeout() {
   electionTimeout = RaftServer::minElectionTimeout + (rand() % 
     (RaftServer::maxElectionTimeout - RaftServer::minElectionTimeout + 1));
-  // std::cout << "Election Timeout=" << electionTimeout << '\n';
 }
