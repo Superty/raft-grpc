@@ -73,7 +73,7 @@ Client: Client.cpp raft.grpc.pb.o raft.pb.o
 	$(CXX) $(CXXFLAGS) $^ $(LDFLAGS) -o $@
 
 clean:
-	rm -f *.o *.pb.cc *.pb.h raft_client raft_server
+	rm -f *.o *.pb.cc *.pb.h raft_client raft_server Client Server StorageTest AlarmTest
 
 # %.o: %.cc %.h
 	# $(CXX) $(CXXFLAGS) $^ $(LDFLAGS) -o $@
